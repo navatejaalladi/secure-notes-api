@@ -168,3 +168,4 @@ async def delete_note(
     
     NOTES.remove(note)
     return {"deleted": True}
+

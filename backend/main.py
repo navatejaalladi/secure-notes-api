@@ -43,3 +43,6 @@ async def get_token(request: TokenRequest):
     
     token, expires_at = create_token(request.username)
     return TokenResponse(token=token, expires_in=3600)
+
+
+

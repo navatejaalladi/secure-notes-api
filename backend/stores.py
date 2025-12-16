@@ -24,3 +24,4 @@ def get_next_note_id() -> int:
     global note_id_counter
     note_id_counter += 1
     return note_id_counter
+

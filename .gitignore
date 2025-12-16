@@ -1,7 +1,32 @@
-_pycache_/
-*.pyc
-*.pyo
-*.egg-info/
-.env
-venv/
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
 env/
+venv/
+ENV/
+.venv
+backend/venv/
+backend/__pycache__/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+
+
