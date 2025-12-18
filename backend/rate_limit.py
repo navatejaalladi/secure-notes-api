@@ -17,7 +17,7 @@ def get_rate_limit_status(user_id: str) -> dict:
     if user_id not in rate_counter:
         rate_counter[user_id] = []
     
-    # Purge timestamps older than 60 seconds (rolling window)
+    # Purge timestamps older than 60 seconds 
     cutoff = now - timedelta(seconds=60)
     rate_counter[user_id] = [
         ts for ts in rate_counter[user_id] if ts > cutoff

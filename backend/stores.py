@@ -10,6 +10,9 @@ USERS: Dict[str, Dict[str, str]] = {
 # Token store: token_string -> {user_id, expires_at}
 TOKENS: Dict[str, Dict[str, any]] = {}
 
+# Reset tokens store: token_string -> {username, expires_at}
+RESET_TOKENS: Dict[str, Dict[str, any]] = {}
+
 # Notes store: list of note dictionaries
 NOTES: List[Dict] = []
 

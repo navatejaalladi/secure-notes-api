@@ -11,9 +11,9 @@ export async function apiRequest<T>(
 ): Promise<T> {
   const token = localStorage.getItem('notes_app_token')
   
-  const headers: HeadersInit = {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    ...options.headers,
+    ...(typeof options.headers === 'object' && !Array.isArray(options.headers) && !(options.headers instanceof Headers) ? options.headers : {}),
   }
 
   if (token) {
@@ -44,6 +44,7 @@ export async function apiRequest<T>(
 export interface TokenResponse {
   token: string
   expires_in: number
+  user_id?: string
 }
 
 export interface Note {
@@ -73,6 +74,54 @@ export const authApi = {
 
     if (!response.ok) {
       throw new Error(data.error || 'Login failed')
+    }
+
+    return data
+  },
+
+  signup: async (username: string, password: string): Promise<TokenResponse> => {
+    const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || data.detail?.error || 'Signup failed')
+    }
+
+    return data
+  },
+
+  forgotPassword: async (username: string): Promise<{ message: string, token: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || data.detail?.error || 'Forgot password failed')
+    }
+
+    return data
+  },
+
+  resetPassword: async (token: string, newPassword: string): Promise<{ message: string }> => {
+    const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, new_password: newPassword }),
+    })
+
+    const data = await response.json()
+
+    if (!response.ok) {
+      throw new Error(data.error || data.detail?.error || 'Reset password failed')
     }
 
     return data

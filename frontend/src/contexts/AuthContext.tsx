@@ -18,7 +18,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userId, setUserId] = useState<string | null>(null)
   const [isInitialized, setIsInitialized] = useState(false)
 
-  // Initialize from localStorage on mount
+  
   useEffect(() => {
     const storedToken = localStorage.getItem(TOKEN_KEY)
     const storedUserId = localStorage.getItem(USER_ID_KEY)
@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const isAuthenticated = !!(token && userId)
 
-  // Don't render children until we've checked localStorage
+  
   if (!isInitialized) {
     return null
   }
