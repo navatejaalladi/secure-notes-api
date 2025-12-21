@@ -1,3 +1,11 @@
+# Environment variables 
+.env
+.env.local
+.env.*.local
+*.env
+.env.production
+.env.development
+
 # Python
 __pycache__/
 *.py[cod]
@@ -10,12 +18,17 @@ ENV/
 .venv
 backend/venv/
 backend/__pycache__/
+*.egg-info/
+dist/
+build/
 
 # Node
 node_modules/
 dist/
 dist-ssr/
 *.local
+.npm
+.yarn
 
 # IDE
 .vscode/
@@ -23,10 +36,42 @@ dist-ssr/
 *.swp
 *.swo
 *~
+*.sublime-project
+*.sublime-workspace
 
 # OS
 .DS_Store
 Thumbs.db
+*.log
 
+# Database
+*.sql.backup
+*.db
+*.sqlite
+*.sqlite3
 
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+.tox/
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Secrets and credentials
+secrets.json
+credentials.json
+*.pem
+*.key
+*.cert

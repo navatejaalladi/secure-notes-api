@@ -192,5 +192,25 @@ The application handles the following error scenarios:
 - Rate limiting uses a rolling 60-second window
 - Each user can only see and modify their own notes
 
+## Database Setup
 
+1. Install MySQL (if not already installed)
+
+2. Create the database and tables:
+```bash
+   mysql -u root -p < backend/schema.sql
+```
+
+3. Create a `.env` file in the backend directory:
+```bash
+   cp backend/.env.example backend/.env
+```
+
+4. Edit `.env` with your actual database credentials:
+```
+   DB_HOST=localhost
+   DB_USER=root
+   DB_PASSWORD=your_actual_password
+   DB_NAME=notes_app
+```
 

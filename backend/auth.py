@@ -3,59 +3,99 @@ import uuid
 from datetime import datetime, timedelta
 from fastapi import HTTPException, Header, status
 from typing import Optional, Tuple
-from stores import USERS, TOKENS, RESET_TOKENS
+from database import db
 
 def create_token(username: str) -> Tuple[str, datetime]:
     """Create a new token for the user."""
     token = secrets.token_urlsafe(32)
     expires_at = datetime.utcnow() + timedelta(seconds=3600)
-    user_id = USERS[username]["user_id"]
-    TOKENS[token] = {
-        "user_id": user_id,
-        "expires_at": expires_at
-    }
+    
+    # Get user_id from database
+    user = db.fetch_one("SELECT user_id FROM users WHERE username = %s", (username,))
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"error": "USER_NOT_FOUND"}
+        )
+    
+    user_id = user['user_id']
+    
+    # Insert token into database
+    db.execute_query(
+        "INSERT INTO tokens (token, user_id, expires_at) VALUES (%s, %s, %s)",
+        (token, user_id, expires_at)
+    )
+    
     return token, expires_at
 
 def create_reset_token(username: str) -> str:
     """Create a reset token for the user."""
-    if username not in USERS:
+    # Check if user exists
+    user = db.fetch_one("SELECT username FROM users WHERE username = %s", (username,))
+    if not user:
         return None
+    
     token = secrets.token_urlsafe(16)
     expires_at = datetime.utcnow() + timedelta(minutes=15)
-    RESET_TOKENS[token] = {
-        "username": username,
-        "expires_at": expires_at
-    }
+    
+    # Insert reset token into database
+    db.execute_query(
+        "INSERT INTO reset_tokens (token, username, expires_at) VALUES (%s, %s, %s)",
+        (token, username, expires_at)
+    )
+    
     return token
 
 def reset_password(token: str, new_password: str) -> bool:
     """Reset user password using token."""
-    if token not in RESET_TOKENS:
+    # Get reset token data
+    reset_data = db.fetch_one(
+        "SELECT username, expires_at FROM reset_tokens WHERE token = %s",
+        (token,)
+    )
+    
+    if not reset_data:
         return False
     
-    reset_data = RESET_TOKENS[token]
-    if reset_data["expires_at"] < datetime.utcnow():
-        del RESET_TOKENS[token]
+    # Check if token expired
+    if reset_data['expires_at'] < datetime.utcnow():
+        db.execute_query("DELETE FROM reset_tokens WHERE token = %s", (token,))
         return False
     
-    username = reset_data["username"]
-    if username in USERS:
-        USERS[username]["password"] = new_password
-        del RESET_TOKENS[token]
-        return True
+    username = reset_data['username']
     
-    return False
+    # Update password
+    db.execute_query(
+        "UPDATE users SET password = %s WHERE username = %s",
+        (new_password, username)
+    )
+    
+    # Delete used reset token
+    db.execute_query("DELETE FROM reset_tokens WHERE token = %s", (token,))
+    
+    return True
 
 def validate_credentials(username: str, password: str) -> bool:
-    """Validate username and password against hardcoded users."""
-    if username not in USERS:
+    """Validate username and password against database."""
+    user = db.fetch_one(
+        "SELECT password FROM users WHERE username = %s",
+        (username,)
+    )
+    
+    if not user:
         return False
-    return USERS[username]["password"] == password
+    
+    return user['password'] == password
 
 def register_user(username: str, password: str) -> Tuple[str, datetime, str]:
     """Register a new user and return token and user_id."""
     # Check if username already exists
-    if username in USERS:
+    existing_user = db.fetch_one(
+        "SELECT username FROM users WHERE username = %s",
+        (username,)
+    )
+    
+    if existing_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={"error": "Username already exists"}
@@ -64,30 +104,33 @@ def register_user(username: str, password: str) -> Tuple[str, datetime, str]:
     # Generate a unique user_id
     user_id = f"user{uuid.uuid4().hex[:8]}"
     
-    # Add user to USERS dict
-    USERS[username] = {
-        "password": password,
-        "user_id": user_id
-    }
+    # Insert new user into database
+    db.execute_query(
+        "INSERT INTO users (user_id, username, password) VALUES (%s, %s, %s)",
+        (user_id, username, password)
+    )
     
-    # Create and return token and user_id
+    # Create and return token
     token, expires_at = create_token(username)
     return token, expires_at, user_id
 
 def get_user_id_from_token(token: str) -> Optional[str]:
     """Get user_id from token if token is valid and not expired."""
-    if token not in TOKENS:
+    token_data = db.fetch_one(
+        "SELECT user_id, expires_at FROM tokens WHERE token = %s",
+        (token,)
+    )
+    
+    if not token_data:
         return None
     
-    token_data = TOKENS[token]
-    expires_at = token_data["expires_at"]
-    
-    if datetime.utcnow() > expires_at:
+    # Check if token expired
+    if datetime.utcnow() > token_data['expires_at']:
         # Token expired, remove it
-        del TOKENS[token]
+        db.execute_query("DELETE FROM tokens WHERE token = %s", (token,))
         return None
     
-    return token_data["user_id"]
+    return token_data['user_id']
 
 async def get_current_user_id(
     authorization: Optional[str] = Header(None)
@@ -116,3 +159,9 @@ async def get_current_user_id(
     
     return user_id
 
+
+def cleanup_expired_tokens():
+    """Remove expired tokens from database."""
+    now = datetime.utcnow()
+    db.execute_query("DELETE FROM tokens WHERE expires_at < %s", (now,))
+    db.execute_query("DELETE FROM reset_tokens WHERE expires_at < %s", (now,))

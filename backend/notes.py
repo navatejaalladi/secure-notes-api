@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, status, Query, Depends
 from pydantic import BaseModel, Field, field_validator
-from stores import NOTES, get_next_note_id
+from database import db
 from auth import get_current_user_id
 from rate_limit import check_rate_limit, get_rate_limit_status
 
@@ -46,13 +46,6 @@ class NoteUpdate(BaseModel):
             raise ValueError("content max length is 1000 characters")
         return v
 
-def find_note_by_id(note_id: int) -> Optional[dict]:
-    """Find a note by ID."""
-    for note in NOTES:
-        if note["id"] == note_id:
-            return note
-    return None
-
 @router.get("/rate-limit-status")
 async def get_rate_limit_status_endpoint(
     user_id: str = Depends(get_current_user_id)
@@ -69,16 +62,31 @@ async def get_notes(
     """Get all notes belonging to the logged-in user."""
     check_rate_limit(user_id)
     
-    # Filter notes by user_id
-    user_notes = [note for note in NOTES if note["user_id"] == user_id]
-    
-    # Apply pagination if provided
+    # Build query with pagination
     if page is not None and size is not None:
-        start = (page - 1) * size
-        end = start + size
-        user_notes = user_notes[start:end]
+        offset = (page - 1) * size
+        query = """
+            SELECT id, title, content, user_id, 
+                   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%SZ') as created_at,
+                   DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%SZ') as updated_at
+            FROM notes 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s
+        """
+        notes = db.fetch_all(query, (user_id, size, offset))
+    else:
+        query = """
+            SELECT id, title, content, user_id,
+                   DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%SZ') as created_at,
+                   DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%SZ') as updated_at
+            FROM notes 
+            WHERE user_id = %s 
+            ORDER BY created_at DESC
+        """
+        notes = db.fetch_all(query, (user_id,))
     
-    return user_notes
+    return notes or []
 
 @router.post("")
 async def create_note(
@@ -89,15 +97,21 @@ async def create_note(
     check_rate_limit(user_id)
     
     try:
-        note = {
-            "id": get_next_note_id(),
-            "title": note_data.title,
-            "content": note_data.content,
-            "user_id": user_id,
-            "created_at": datetime.utcnow().isoformat() + "Z",
-            "updated_at": datetime.utcnow().isoformat() + "Z"
-        }
-        NOTES.append(note)
+        # Insert note into database
+        note_id = db.execute_query(
+            "INSERT INTO notes (title, content, user_id) VALUES (%s, %s, %s)",
+            (note_data.title, note_data.content, user_id)
+        )
+        
+        # Fetch the created note
+        note = db.fetch_one(
+            """SELECT id, title, content, user_id,
+                      DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%SZ') as created_at,
+                      DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%SZ') as updated_at
+               FROM notes WHERE id = %s""",
+            (note_id,)
+        )
+        
         return note
     except ValueError as e:
         raise HTTPException(
@@ -114,7 +128,11 @@ async def update_note(
     """Update an existing note."""
     check_rate_limit(user_id)
     
-    note = find_note_by_id(note_id)
+    # Check if note exists and belongs to user
+    note = db.fetch_one(
+        "SELECT id, user_id FROM notes WHERE id = %s",
+        (note_id,)
+    )
     
     if note is None:
         raise HTTPException(
@@ -129,15 +147,33 @@ async def update_note(
         )
     
     try:
-        # Update fields if provided
+        # Build update query dyndamically
+        update_fields = []
+        params = []
+        
         if note_data.title is not None:
-            note["title"] = note_data.title
+            update_fields.append("title = %s")
+            params.append(note_data.title)
+        
         if note_data.content is not None:
-            note["content"] = note_data.content
+            update_fields.append("content = %s")
+            params.append(note_data.content)
         
-        note["updated_at"] = datetime.utcnow().isoformat() + "Z"
+        if update_fields:
+            params.append(note_id)
+            query = f"UPDATE notes SET {', '.join(update_fields)} WHERE id = %s"
+            db.execute_query(query, tuple(params))
         
-        return note
+        # Fetch updated note
+        updated_note = db.fetch_one(
+            """SELECT id, title, content, user_id,
+                      DATE_FORMAT(created_at, '%Y-%m-%dT%H:%i:%SZ') as created_at,
+                      DATE_FORMAT(updated_at, '%Y-%m-%dT%H:%i:%SZ') as updated_at
+               FROM notes WHERE id = %s""",
+            (note_id,)
+        )
+        
+        return updated_note
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -152,7 +188,11 @@ async def delete_note(
     """Delete a note."""
     check_rate_limit(user_id)
     
-    note = find_note_by_id(note_id)
+    # Check if note exists and belongs to user
+    note = db.fetch_one(
+        "SELECT id, user_id FROM notes WHERE id = %s",
+        (note_id,)
+    )
     
     if note is None:
         raise HTTPException(
@@ -166,6 +206,7 @@ async def delete_note(
             detail={"error": "FORBIDDEN"}
         )
     
-    NOTES.remove(note)
+    # Delete note
+    db.execute_query("DELETE FROM notes WHERE id = %s", (note_id,))
+    
     return {"deleted": True}
-
